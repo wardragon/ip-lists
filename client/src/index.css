@@ -1,0 +1,34 @@
+:root {
+  --bg: #0f1419;
+  --panel: #171e26;
+  --border: #2a3542;
+  --text: #e7eef6;
+  --muted: #93a4b8;
+  --allow: #3dd68c;
+  --allow-bg: rgba(61, 214, 140, 0.12);
+  --deny: #ff6b6b;
+  --deny-bg: rgba(255, 107, 107, 0.12);
+  --gray: #8bb4ff;
+  --gray-bg: rgba(139, 180, 255, 0.12);
+
+  font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+button,
+input {
+  font: inherit;
+}

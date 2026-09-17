@@ -1,0 +1,21 @@
+{
+  "name": "ip-lists",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Internal whitelist / blacklist manager that refuses overlapping IPs",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "npm run dev --prefix client",
+    "test": "node --test server/*.test.js",
+    "install:all": "npm install && npm install --prefix client"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
