@@ -91,7 +91,7 @@ app.post("/api/entries/:id/move", (req, res) => {
       err.status = 400;
       throw err;
     }
-    const result = lists.moveEntry(id, target);
+    const result = lists.moveEntry(id, target, req.body?.reason);
     res.json({
       entry: publicEntry(result.entry),
       transition: result.transition,

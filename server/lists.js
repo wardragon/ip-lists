@@ -244,7 +244,7 @@ function createLists(store, deps = {}) {
     });
   }
 
-  function moveEntry(id, target) {
+  function moveEntry(id, target, customReason = null) {
     processExpirations();
     const existing = store.getEntry(id);
     if (!existing) {
@@ -264,9 +264,11 @@ function createLists(store, deps = {}) {
         throw Object.assign(new Error("Entry not found"), { status: 404 });
       }
 
+      const reason = customReason || "manual_move";
+
       if (target === "graylist") {
         store.deleteEntry(fresh.id);
-        return insertGraylistLocked(fresh, "manual_move", at);
+        return insertGraylistLocked(fresh, reason, at);
       }
 
       if (target === "blacklist") {
@@ -293,7 +295,7 @@ function createLists(store, deps = {}) {
         end: fresh.end,
         created_at: toIso(at),
         expires_at: expiresAt,
-        reason: "manual_move",
+        reason: reason,
       });
       return { transition: "moved", entry: publicEntry(created) };
     });

@@ -69,6 +69,7 @@ function reasonLabel(reason: string | null) {
 export default function App() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [cidr, setCidr] = useState("");
+  const [reason, setReason] = useState("");
   const [noExpiration, setNoExpiration] = useState(false);
   const [expiresLocal, setExpiresLocal] = useState(defaultExpiryLocal);
   const [error, setError] = useState("");
@@ -150,13 +151,14 @@ export default function App() {
     setConflict(null);
     setBusy(true);
     try {
-      const body: Record<string, unknown> = { list, cidr };
+      const body: Record<string, unknown> = { list, cidr, reason };
       if (list === "blacklist") {
         if (noExpiration) body.permanent = true;
         else body.expiresAt = new Date(expiresLocal).toISOString();
       }
       await apiWithConflict("/api/entries", { method: "POST", body: JSON.stringify(body) });
       setCidr("");
+      setReason("");
       setNoExpiration(false);
       setExpiresLocal(defaultExpiryLocal());
       await refresh();
@@ -181,13 +183,13 @@ export default function App() {
     }
   }
 
-  async function move(id: number, target: ListName) {
+  async function move(id: number, target: ListName, reason?: string) {
     setError("");
     setBusy(true);
     try {
       await api(`/api/entries/${id}/move`, {
         method: "POST",
-        body: JSON.stringify({ target }),
+        body: JSON.stringify({ target, reason }),
       });
       await refresh();
     } catch (err) {
@@ -238,6 +240,13 @@ export default function App() {
           onChange={(event) => setCidr(event.target.value)}
           placeholder="10.0.0.1 or 10.0.0.0/8"
           aria-label="IPv4 address or CIDR"
+          autoComplete="off"
+        />
+        <input
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Reason (optional)"
+          aria-label="Reason for adding"
           autoComplete="off"
         />
         <label className="expire-toggle">
@@ -344,7 +353,7 @@ function ListColumn({
   list: ListName;
   entries: Entry[];
   busy: boolean;
-  onMove: (id: number, target: ListName) => void;
+  onMove: (id: number, target: ListName, reason?: string) => void;
   onRemove: (id: number) => void;
   onSaveExpiration?: (id: number, permanent: boolean, localValue: string) => void;
 }) {
@@ -385,7 +394,7 @@ function EntryRow({
   entry: Entry;
   busy: boolean;
   targets: ListName[];
-  onMove: (id: number, target: ListName) => void;
+  onMove: (id: number, target: ListName, reason?: string) => void;
   onRemove: (id: number) => void;
   onSaveExpiration?: (id: number, permanent: boolean, localValue: string) => void;
 }) {
@@ -487,7 +496,10 @@ function EntryRow({
             className="ghost"
             type="button"
             disabled={busy}
-            onClick={() => onMove(entry.id, target)}
+            onClick={() => {
+              const r = prompt("Reason for moving? (optional)");
+              if (r !== null) onMove(entry.id, target, r);
+            }}
           >
             Move to {target}
           </button>
