@@ -326,6 +326,9 @@ function createLists(store, deps = {}) {
       const row = store.getEntry(id);
       return row ? publicEntry(row) : null;
     },
+    listAudit(cidr) {
+      return store.listAudit(cidr);
+    },
   };
 }
 

@@ -110,6 +110,14 @@ app.delete("/api/entries/:id", (req, res) => {
   }
 });
 
+app.get("/api/audit/:cidr", (req, res) => {
+  try {
+    res.json({ events: lists.listAudit(req.params.cidr) });
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 app.post("/api/jobs/expire", (_req, res) => {
   try {
     const moved = lists.processExpirations().map((item) => ({

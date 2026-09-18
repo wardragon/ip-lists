@@ -14,6 +14,14 @@ type Entry = {
   graylistInsertionsInWindow: number;
 };
 
+type AuditEvent = {
+  id: number;
+  cidr: string;
+  event: string;
+  reason: string | null;
+  created_at: string;
+};
+
 type ApiError = {
   error?: string;
   conflict?: Entry;
@@ -64,11 +72,19 @@ export default function App() {
   const [noExpiration, setNoExpiration] = useState(false);
   const [expiresLocal, setExpiresLocal] = useState(defaultExpiryLocal);
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState<Entry | null>(null);
+  const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const whitelist = useMemo(() => entries.filter((e) => e.list === "whitelist"), [entries]);
-  const blacklist = useMemo(() => entries.filter((e) => e.list === "blacklist"), [entries]);
-  const graylist = useMemo(() => entries.filter((e) => e.list === "graylist"), [entries]);
+  const filteredEntries = useMemo(() => {
+    if (!search.trim()) return entries;
+    const s = search.toLowerCase();
+    return entries.filter((e) => e.cidr.toLowerCase().includes(s));
+  }, [entries, search]);
+
+  const whitelist = useMemo(() => filteredEntries.filter((e) => e.list === "whitelist"), [filteredEntries]);
+  const blacklist = useMemo(() => filteredEntries.filter((e) => e.list === "blacklist"), [filteredEntries]);
+  const graylist = useMemo(() => filteredEntries.filter((e) => e.list === "graylist"), [filteredEntries]);
 
   async function refresh() {
     const data = await api<{ entries: Entry[] }>("/api/entries");
@@ -86,6 +102,7 @@ export default function App() {
   async function addTo(list: ListName, event?: FormEvent) {
     event?.preventDefault();
     setError("");
+    setConflict(null);
     setBusy(true);
     try {
       const body: Record<string, unknown> = { list, cidr };
@@ -99,11 +116,57 @@ export default function App() {
       setExpiresLocal(defaultExpiryLocal());
       await refresh();
     } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+        // If the error message came from our API and it's a conflict,
+        // it might be attached to the error if we modified the `api` function
+        // but let's try to fetch it from the message or a dedicated state
+      } else {
+        setError("Could not add address");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Modified api function to expose conflict data
+  async function apiWithConflict<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(path, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    });
+    const data = (await res.json().catch(() => ({}))) as T & ApiError;
+    if (!res.ok) {
+      if (data.conflict) setConflict(data.conflict);
+      throw new Error(data.error || `Request failed (${res.status})`);
+    }
+    return data;
+  }
+
+  // We need to update our calls to use the new api function that handles conflicts
+  async function addToWithConflict(list: ListName, event?: FormEvent) {
+    event?.preventDefault();
+    setError("");
+    setConflict(null);
+    setBusy(true);
+    try {
+      const body: Record<string, unknown> = { list, cidr };
+      if (list === "blacklist") {
+        if (noExpiration) body.permanent = true;
+        else body.expiresAt = new Date(expiresLocal).toISOString();
+      }
+      await apiWithConflict("/api/entries", { method: "POST", body: JSON.stringify(body) });
+      setCidr("");
+      setNoExpiration(false);
+      setExpiresLocal(defaultExpiryLocal());
+      await refresh();
+    } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add address");
     } finally {
       setBusy(false);
     }
   }
+
 
   async function remove(id: number) {
     setError("");
@@ -195,10 +258,10 @@ export default function App() {
         <button className="allow" type="submit" disabled={busy}>
           Add to whitelist
         </button>
-        <button className="deny" type="button" disabled={busy} onClick={() => addTo("blacklist")}>
+        <button className="deny" type="button" disabled={busy} onClick={() => addToWithConflict("blacklist")}>
           Add to blacklist
         </button>
-        <button className="watch" type="button" disabled={busy} onClick={() => addTo("graylist")}>
+        <button className="watch" type="button" disabled={busy} onClick={() => addToWithConflict("graylist")}>
           Add to graylist
         </button>
       </form>
@@ -209,9 +272,28 @@ export default function App() {
         entry.
       </p>
 
-      <p className="error" role="alert">
-        {error}
-      </p>
+      {conflict && (
+        <div className="conflict-notice">
+          <strong>Conflict Detected:</strong> {error}
+          <br />
+          The overlapping entry is currently in the <strong>{conflict.list}</strong>.
+        </div>
+      )}
+
+      {!conflict && error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="search-bar">
+        <input
+          type="text"
+          placeholder="Filter entries by IP or CIDR..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
 
       <section className="grid">
         <ListColumn
@@ -311,6 +393,16 @@ function EntryRow({
   const [localValue, setLocalValue] = useState(() =>
     entry.expiresAt ? toDatetimeLocal(new Date(entry.expiresAt)) : defaultExpiryLocal(),
   );
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [showAudit, setShowAudit] = useState(false);
+
+  useEffect(() => {
+    if (showAudit && auditEvents.length === 0) {
+      api<{ events: AuditEvent[] }>(`/api/audit/${encodeURIComponent(entry.cidr)}`)
+        .then((data) => setAuditEvents(data.events))
+        .catch(console.error);
+    }
+  }, [showAudit, entry.cidr, auditEvents.length]);
 
   return (
     <div className="row">
@@ -361,6 +453,33 @@ function EntryRow({
           </button>
         </div>
       ) : null}
+
+      <details className="audit-log" open={showAudit} onToggle={(e) => setShowAudit((e.target as HTMLDetailsElement).open)}>
+        <summary>View Activity Log</summary>
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th>Reason</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {auditEvents.length === 0 ? (
+              <tr><td colSpan={3}>Loading or no events...</td></tr>
+            ) : (
+              auditEvents.map(event => (
+                <tr key={event.id}>
+                  <td>{event.event.replace(/_/g, ' ')}</td>
+                  <td>{reasonLabel(event.reason)}</td>
+                  <td>{formatTimestamp(event.created_at)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </details>
+
       <div className="row-actions">
         {targets.map((target) => (
           <button
